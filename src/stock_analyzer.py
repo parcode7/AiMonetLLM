@@ -180,7 +180,7 @@ class StockTrendAnalyzer:
     5. MACD 指标 - 趋势确认和金叉死叉信号
     6. RSI 指标 - 超买超卖判断
     """
-    
+
     # 交易参数配置（BIAS_THRESHOLD 从 Config 读取，见 _generate_signal）
     VOLUME_SHRINK_RATIO = 0.7   # 缩量判断阈值（当日量/5日均量）
     VOLUME_HEAVY_RATIO = 1.5    # 放量判断阈值
@@ -197,11 +197,25 @@ class StockTrendAnalyzer:
     RSI_LONG = 24              # 长期RSI周期
     RSI_OVERBOUGHT = 70        # 超买阈值
     RSI_OVERSOLD = 30          # 超卖阈值
-    
-    def __init__(self):
-        """初始化分析器"""
-        pass
-    
+
+    # 均线窗口配置（日线默认）
+    MA_WINDOWS = {"MA5": 5, "MA10": 10, "MA20": 20, "MA60": 60}
+
+    # 小时级别均线窗口（5/10/20/60 小时）
+    HOURLY_MA_WINDOWS = {"MA5": 5, "MA10": 10, "MA20": 20, "MA60": 60}
+
+    def __init__(self, interval: str = "1d"):
+        """
+        初始化分析器
+
+        Args:
+            interval: K线周期，默认 "1d"。小时级别可设为 "1h" 等
+        """
+        self.interval = interval
+        # 小时级别使用更短的均线窗口
+        if interval in ("1h", "2h", "4h", "6h", "8h", "12h", "1m", "5m", "15m", "30m"):
+            self.MA_WINDOWS = self.HOURLY_MA_WINDOWS
+
     def analyze(self, df: pd.DataFrame, code: str) -> TrendAnalysisResult:
         """
         分析股票趋势
@@ -264,11 +278,16 @@ class StockTrendAnalyzer:
     def _calculate_mas(self, df: pd.DataFrame) -> pd.DataFrame:
         """计算均线"""
         df = df.copy()
-        df['MA5'] = df['close'].rolling(window=5).mean()
-        df['MA10'] = df['close'].rolling(window=10).mean()
-        df['MA20'] = df['close'].rolling(window=20).mean()
-        if len(df) >= 60:
-            df['MA60'] = df['close'].rolling(window=60).mean()
+        ma5_window = self.MA_WINDOWS["MA5"]
+        ma10_window = self.MA_WINDOWS["MA10"]
+        ma20_window = self.MA_WINDOWS["MA20"]
+        ma60_window = self.MA_WINDOWS["MA60"]
+
+        df['MA5'] = df['close'].rolling(window=ma5_window).mean()
+        df['MA10'] = df['close'].rolling(window=ma10_window).mean()
+        df['MA20'] = df['close'].rolling(window=ma20_window).mean()
+        if len(df) >= ma60_window:
+            df['MA60'] = df['close'].rolling(window=ma60_window).mean()
         else:
             df['MA60'] = df['MA20']  # 数据不足时使用 MA20 替代
         return df

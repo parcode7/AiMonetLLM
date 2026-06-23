@@ -111,29 +111,34 @@ class BitgetFetcher(BaseFetcher):
         })
     
     def _fetch_raw_data(
-        self, 
-        stock_code: str, 
-        start_date: str, 
-        end_date: str
+        self,
+        stock_code: str,
+        start_date: str,
+        end_date: str,
+        interval: str = "1d",
     ) -> pd.DataFrame:
         """
         获取 K 线数据
-        
+
         API: GET /api/v2/mix/market/history-candles
         文档: https://www.bitget.com/zh-CN/api-doc/contract/market/Get-History-Candle-Data
         """
         symbol = extract_bitget_symbol(stock_code)
-        
+
         # 转换日期为毫秒时间戳
         start_ts = int(datetime.strptime(start_date, "%Y-%m-%d").timestamp() * 1000)
         end_ts = int(datetime.strptime(end_date, "%Y-%m-%d").timestamp() * 1000)
-        
+
+        # BitGet 使用大写格式：1m/5m/15m/30m/1h/4h/1d/1w
+        # 将 "1d" 转换为 "1D"，"1h" 保持不变
+        bitget_interval = interval.upper() if interval.lower() == "1d" else interval
+
         # 使用合约历史K线接口 (v2)
         url = f"{BITGET_API_BASE}/api/v2/mix/market/history-candles"
         params = {
             "symbol": symbol,
             "productType": PRODUCT_TYPE,
-            "granularity": "1D",  # 日线
+            "granularity": bitget_interval,
             "startTime": str(start_ts),
             "endTime": str(end_ts),
             "limit": "200",  # 最大 200 条
@@ -160,7 +165,12 @@ class BitgetFetcher(BaseFetcher):
             rows = []
             for candle in candles:
                 ts = int(candle[0])
-                date_str = datetime.fromtimestamp(ts / 1000).strftime("%Y-%m-%d")
+                dt = datetime.fromtimestamp(ts / 1000)
+                # 小时级别保留时间，日期级别只保留日期
+                if "m" in interval or "h" in interval:
+                    date_str = dt.strftime("%Y-%m-%d %H:%M")
+                else:
+                    date_str = dt.strftime("%Y-%m-%d")
                 rows.append({
                     "date": date_str,
                     "open": float(candle[1]),

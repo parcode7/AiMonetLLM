@@ -334,15 +334,25 @@ class BaseFetcher(ABC):
     allow_empty_daily_data: bool = False
     
     @abstractmethod
-    def _fetch_raw_data(self, stock_code: str, start_date: str, end_date: str) -> pd.DataFrame:
+    def _fetch_raw_data(
+        self,
+        stock_code: str,
+        start_date: str,
+        end_date: str,
+        interval: str = "1d",
+    ) -> pd.DataFrame:
         """
         从数据源获取原始数据（子类必须实现）
-        
+
         Args:
-            stock_code: 股票代码，如 '600519', '000001'
+            stock_code: 股票代码
             start_date: 开始日期，格式 'YYYY-MM-DD'
             end_date: 结束日期，格式 'YYYY-MM-DD'
-            
+            interval: K线周期，默认 "1d"（日线）。支持：
+                - "1m", "5m", "15m", "30m"（分钟）
+                - "1h", "2h", "4h", "6h", "8h", "12h"（小时）
+                - "1d", "1w", "1M"（日/周/月）
+
         Returns:
             原始数据 DataFrame（列名因数据源而异）
         """
@@ -438,33 +448,38 @@ class BaseFetcher(ABC):
 
     def get_daily_data(
         self,
-        stock_code: str, 
+        stock_code: str,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        days: int = 30
+        days: int = 30,
+        interval: str = "1d",
     ) -> pd.DataFrame:
         """
-        获取日线数据（统一入口）
-        
+        获取 K 线数据（统一入口）
+
         流程：
         1. 计算日期范围
         2. 调用子类获取原始数据
         3. 标准化列名
         4. 计算技术指标
-        
+
         Args:
             stock_code: 股票代码
             start_date: 开始日期（可选）
             end_date: 结束日期（可选，默认今天）
             days: 获取天数（当 start_date 未指定时使用）
-            
+            interval: K线周期，默认 "1d"（日线）。支持：
+                - "1m", "5m", "15m", "30m"（分钟）
+                - "1h", "2h", "4h", "6h", "8h", "12h"（小时）
+                - "1d", "1w", "1M"（日/周/月）
+
         Returns:
             标准化的 DataFrame，包含技术指标
         """
         # 计算日期范围
         if end_date is None:
             end_date = datetime.now().strftime('%Y-%m-%d')
-        
+
         if start_date is None:
             # 默认获取最近 30 个交易日（按日历日估算，多取一些）
             from datetime import timedelta
@@ -472,11 +487,11 @@ class BaseFetcher(ABC):
             start_date = start_dt.strftime('%Y-%m-%d')
 
         request_start = time.time()
-        logger.info(f"[{self.name}] 开始获取 {stock_code} 日线数据: 范围={start_date} ~ {end_date}")
-        
+        logger.info(f"[{self.name}] 开始获取 {stock_code} K线数据: 范围={start_date} ~ {end_date}, interval={interval}")
+
         try:
             # Step 1: 获取原始数据
-            raw_df = self._fetch_raw_data(stock_code, start_date, end_date)
+            raw_df = self._fetch_raw_data(stock_code, start_date, end_date, interval)
             
             if raw_df is None:
                 raise DataFetchError(f"[{self.name}] 未获取到 {stock_code} 的数据")
@@ -502,7 +517,7 @@ class BaseFetcher(ABC):
             elapsed = time.time() - request_start
             logger.info(
                 f"[{self.name}] {stock_code} 获取成功: 范围={start_date} ~ {end_date}, "
-                f"rows={len(df)}, elapsed={elapsed:.2f}s"
+                f"interval={interval}, rows={len(df)}, elapsed={elapsed:.2f}s"
             )
             return df
             
@@ -1218,31 +1233,33 @@ class DataFetcherManager:
             self._refresh_fetcher_indexes_locked()
     
     def get_daily_data(
-        self, 
+        self,
         stock_code: str,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        days: int = 30
+        days: int = 30,
+        interval: str = "1d",
     ) -> Tuple[pd.DataFrame, str]:
         """
-        获取日线数据（自动切换数据源）
-        
+        获取 K 线数据（自动切换数据源）
+
         故障切换策略：
         1. 美股指数/美股股票直接路由到 YfinanceFetcher
         2. 其他代码从最高优先级数据源开始尝试
         3. 捕获异常后自动切换到下一个
         4. 记录每个数据源的失败原因
         5. 所有数据源失败后抛出详细异常
-        
+
         Args:
             stock_code: 股票代码
             start_date: 开始日期
             end_date: 结束日期
             days: 获取天数
-            
+            interval: K线周期，默认 "1d"。支持 "1m","5m","15m","30m","1h","4h","1d","1w","1M"
+
         Returns:
             Tuple[DataFrame, str]: (数据, 成功的数据源名称)
-            
+
         Raises:
             DataFetchError: 所有数据源都失败时抛出
         """
@@ -1265,6 +1282,7 @@ class DataFetcherManager:
                         start_date=start_date,
                         end_date=end_date,
                         days=days,
+                        interval=interval,
                     )
                     if df is not None and not df.empty:
                         logger.info(f"[数据源完成] {stock_code} 使用 [BitgetFetcher] 获取成功: rows={len(df)}")
@@ -1282,6 +1300,7 @@ class DataFetcherManager:
                         start_date=start_date,
                         end_date=end_date,
                         days=days,
+                        interval=interval,
                     )
                     if df is not None and not df.empty:
                         logger.info(f"[数据源完成] {stock_code} 使用 [BinanceFetcher] 获取成功: rows={len(df)}")

@@ -1835,9 +1835,13 @@ class GeminiAnalyzer:
         "battle_plan": {
             "sniper_points": {
                 "ideal_buy": "理想买入点：XX元（在MA5附近）",
+                "ideal_entry_time": "理想入场时间：HH:MM（如 14:30）",
                 "secondary_buy": "次优买入点：XX元（在MA10附近）",
+                "secondary_entry_time": "次优入场时间：HH:MM",
                 "stop_loss": "止损位：XX元（跌破MA20或X%）",
-                "take_profit": "目标位：XX元（前高/整数关口）"
+                "stop_loss_time": "预计触发时间：HH:MM",
+                "take_profit": "目标位：XX元（前高/整数关口）",
+                "take_profit_time": "预计达到时间：HH:MM"
             },
             "position_strategy": {
                 "suggested_position": "建议仓位：X成",
@@ -2005,9 +2009,13 @@ class GeminiAnalyzer:
         "battle_plan": {
             "sniper_points": {
                 "ideal_buy": "理想入场位：XX元（满足主要技能触发条件）",
+                "ideal_entry_time": "理想入场时间：HH:MM（如 14:30）",
                 "secondary_buy": "次优入场位：XX元（更保守或确认后执行）",
+                "secondary_entry_time": "次优入场时间：HH:MM",
                 "stop_loss": "止损位：XX元（失效条件或X%风险）",
-                "take_profit": "目标位：XX元（按阻力位/风险回报比制定）"
+                "stop_loss_time": "预计触发时间：HH:MM",
+                "take_profit": "目标位：XX元（按阻力位/风险回报比制定）",
+                "take_profit_time": "预计达到时间：HH:MM"
             },
             "position_strategy": {
                 "suggested_position": "建议仓位：X成",

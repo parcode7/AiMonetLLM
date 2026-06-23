@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional
 
 
 SNIPER_KEYS = ("ideal_buy", "secondary_buy", "stop_loss", "take_profit")
+SNIPER_TIME_KEYS = ("ideal_entry_time", "secondary_entry_time", "stop_loss_time", "take_profit_time")
 
 
 def parse_sniper_value(value: Any) -> Optional[float]:
@@ -70,6 +71,29 @@ def parse_sniper_value(value: Any) -> Optional[float]:
     return None
 
 
+def parse_sniper_time(value: Any) -> Optional[str]:
+    """Parse a sniper point time value into HH:MM format."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or text in {"-", "—", "N/A", ""}:
+            return None
+        # Try to find HH:MM or H:MM pattern
+        match = re.search(r"(\d{1,2}):(\d{2})", text)
+        if match:
+            hour, minute = int(match.group(1)), int(match.group(2))
+            if 0 <= hour <= 23 and 0 <= minute <= 59:
+                return f"{hour:02d}:{minute:02d}"
+        # Try Chinese format
+        match = re.search(r"(\d{1,2})时(\d{1,2})?分?", text)
+        if match:
+            hour, minute = int(match.group(1)), int(match.group(2) or 0)
+            if 0 <= hour <= 23 and 0 <= minute <= 59:
+                return f"{hour:02d}:{minute:02d}"
+    return None
+
+
 def extract_sniper_points(result: Any) -> Dict[str, Optional[float]]:
     """Extract normalized sniper-point prices from a completed analysis result."""
 
@@ -90,7 +114,9 @@ def extract_sniper_points(result: Any) -> Dict[str, Optional[float]]:
         if isinstance(raw_response, Mapping):
             raw_points = find_sniper_points(raw_response) or raw_points
 
-    return {key: parse_sniper_value(raw_points.get(key)) for key in SNIPER_KEYS}
+    prices = {key: parse_sniper_value(raw_points.get(key)) for key in SNIPER_KEYS}
+    times = {key: parse_sniper_time(raw_points.get(key)) for key in SNIPER_TIME_KEYS}
+    return {**prices, **times}
 
 
 def _has_any_sniper_value(points: Mapping[str, Any]) -> bool:

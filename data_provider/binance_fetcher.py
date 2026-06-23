@@ -119,27 +119,28 @@ class BinanceFetcher(BaseFetcher):
         })
     
     def _fetch_raw_data(
-        self, 
-        stock_code: str, 
-        start_date: str, 
-        end_date: str
+        self,
+        stock_code: str,
+        start_date: str,
+        end_date: str,
+        interval: str = "1d",
     ) -> pd.DataFrame:
         """
         获取 K 线数据
-        
+
         API: GET /api/v3/klines
         文档: https://developers.binance.com/docs/simple_earn/history/get-kline
         """
         symbol = extract_binance_symbol(stock_code)
-        
+
         # 转换日期为毫秒时间戳
         start_ts = int(datetime.strptime(start_date, "%Y-%m-%d").timestamp() * 1000)
         end_ts = int(datetime.strptime(end_date, "%Y-%m-%d").timestamp() * 1000)
-        
+
         url = f"{BINANCE_API_BASE}/api/v3/klines"
         params = {
             "symbol": symbol,
-            "interval": "1d",
+            "interval": interval,
             "startTime": start_ts,
             "endTime": end_ts,
             "limit": 500,
