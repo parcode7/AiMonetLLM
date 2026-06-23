@@ -1248,17 +1248,36 @@ class DataFetcherManager:
         """
         from .us_index_mapping import is_us_index_code, is_us_stock_code
         from .binance_fetcher import is_binance_stock_token, extract_binance_symbol
+        from .bitget_fetcher import is_bitget_stock_token
 
         # Normalize code (strip SH/SZ prefix etc.)
         stock_code = normalize_stock_code(stock_code)
 
-        # 快速路径：币安股票代币（如 SPCXUSDT、AAPLUSDT）直接路由到 BinanceFetcher
-        if is_binance_stock_token(stock_code):
-            logger.info(f"[数据源路由] {stock_code} 识别为币安股票代币，使用 BinanceFetcher")
-            fetcher = self._get_fetcher_by_name("BinanceFetcher")
-            if fetcher is not None:
+        # 快速路径：USDT股票代币（如 SPCXUSDT、AAPLUSDT）优先使用 BitgetFetcher，BinanceFetcher 作为备份
+        if is_binance_stock_token(stock_code) or is_bitget_stock_token(stock_code):
+            # 优先尝试 BitgetFetcher（合约接口，CI/CD 环境可用）
+            bitget_fetcher = self._get_fetcher_by_name("BitgetFetcher")
+            if bitget_fetcher is not None:
+                logger.info(f"[数据源路由] {stock_code} 识别为股票代币，优先使用 BitgetFetcher")
                 try:
-                    df = fetcher.get_daily_data(
+                    df = bitget_fetcher.get_daily_data(
+                        stock_code=stock_code,
+                        start_date=start_date,
+                        end_date=end_date,
+                        days=days,
+                    )
+                    if df is not None and not df.empty:
+                        logger.info(f"[数据源完成] {stock_code} 使用 [BitgetFetcher] 获取成功: rows={len(df)}")
+                        return df, "BitgetFetcher"
+                except Exception as e:
+                    logger.warning(f"[数据源路由] BitgetFetcher 获取 {stock_code} 失败: {e}")
+            
+            # BitgetFetcher 失败时尝试 BinanceFetcher
+            binance_fetcher = self._get_fetcher_by_name("BinanceFetcher")
+            if binance_fetcher is not None:
+                logger.info(f"[数据源路由] {stock_code} BitgetFetcher 失败，尝试 BinanceFetcher")
+                try:
+                    df = binance_fetcher.get_daily_data(
                         stock_code=stock_code,
                         start_date=start_date,
                         end_date=end_date,
@@ -1269,7 +1288,7 @@ class DataFetcherManager:
                         return df, "BinanceFetcher"
                 except Exception as e:
                     logger.warning(f"[数据源路由] BinanceFetcher 获取 {stock_code} 失败: {e}")
-            # 失败时继续走通用路由
+            # 都失败时继续走通用路由
 
         fetchers = self._get_fetchers_snapshot()
         errors = []
@@ -1297,8 +1316,8 @@ class DataFetcherManager:
             raise DataFetchError(error_summary)
 
         # 美股（含美股指数）使用专用路由；港股走下方通用数据源循环
-        # Failover chain: BinanceFetcher -> BitgetFetcher(备份) -> Finnhub(P2) -> AlphaVantage(P3) -> Yfinance(P4) -> Longbridge(P5)
-        # When Longbridge preferred: Longbridge -> BinanceFetcher -> BitgetFetcher -> Finnhub -> AlphaVantage -> Yfinance
+        # Failover chain: BitgetFetcher -> BinanceFetcher(备份) -> Finnhub(P2) -> AlphaVantage(P3) -> Yfinance(P4) -> Longbridge(P5)
+        # When Longbridge preferred: Longbridge -> BitgetFetcher -> BinanceFetcher -> Finnhub -> AlphaVantage -> Yfinance
         if is_us:
             prefer_lb = self._longbridge_preferred(capability="daily_data") and not is_us_index
             if is_us_index:
@@ -1308,17 +1327,17 @@ class DataFetcherManager:
                 source_order = ["LongbridgeFetcher", "FinnhubFetcher", "AlphaVantageFetcher", "YfinanceFetcher"]
             else:
                 source_order = ["FinnhubFetcher", "AlphaVantageFetcher", "YfinanceFetcher", "LongbridgeFetcher"]
-            # 币安股票代币优先尝试 BinanceFetcher，失败后尝试 BitgetFetcher
-            if self._get_fetcher_by_name("BinanceFetcher") is not None:
-                source_order = ["BinanceFetcher"] + source_order
+            # 股票代币优先尝试 BitgetFetcher，BinanceFetcher 作为备份
             if self._get_fetcher_by_name("BitgetFetcher") is not None:
-                # BitgetFetcher 作为 BinanceFetcher 的备份
-                if "BinanceFetcher" in source_order:
-                    # 在 BinanceFetcher 后面插入 BitgetFetcher
-                    idx = source_order.index("BinanceFetcher")
-                    source_order.insert(idx + 1, "BitgetFetcher")
+                source_order = ["BitgetFetcher"] + source_order
+            if self._get_fetcher_by_name("BinanceFetcher") is not None:
+                # BinanceFetcher 作为 BitgetFetcher 的备份
+                if "BitgetFetcher" in source_order:
+                    # 在 BitgetFetcher 后面插入 BinanceFetcher
+                    idx = source_order.index("BitgetFetcher")
+                    source_order.insert(idx + 1, "BinanceFetcher")
                 else:
-                    source_order = ["BitgetFetcher"] + source_order
+                    source_order = ["BinanceFetcher"] + source_order
             market_label = "美股指数" if is_us_index else "美股"
 
             for order_index, src_name in enumerate(source_order):
@@ -1712,17 +1731,33 @@ class DataFetcherManager:
         from .akshare_fetcher import _is_us_code
         from .us_index_mapping import is_us_index_code
         from .binance_fetcher import is_binance_stock_token
+        from .bitget_fetcher import is_bitget_stock_token
         from src.config import get_config
 
         # ----------------------------------------------------------
-        # 币安股票代币路由（优先于其他数据源）
+        # USDT股票代币路由（优先于其他数据源）
         # 例如：SPCXUSDT、AAPLUSDT、TSLAUSDT 等
+        # 优先使用 BitgetFetcher，BinanceFetcher 作为备份
         # ----------------------------------------------------------
-        if is_binance_stock_token(stock_code):
-            logger.info(f"[实时行情] {stock_code} 识别为币安股票代币")
-            fetcher = self._get_fetcher_by_name("BinanceFetcher")
-            if fetcher is not None:
-                quote = fetcher.get_realtime_quote(stock_code)
+        if is_binance_stock_token(stock_code) or is_bitget_stock_token(stock_code):
+            # 优先尝试 BitgetFetcher
+            bitget_fetcher = self._get_fetcher_by_name("BitgetFetcher")
+            if bitget_fetcher is not None:
+                quote = bitget_fetcher.get_realtime_quote(stock_code)
+                if quote is not None:
+                    logger.info(f"[实时行情] {stock_code} 成功获取 (来源: BitgetFetcher)")
+                    return self._enrich_realtime_quote(
+                        quote,
+                        realtime_cache_ttl=getattr(config, "realtime_cache_ttl", None),
+                    )
+                logger.warning(f"[实时行情] {stock_code} BitgetFetcher 获取失败，尝试 BinanceFetcher")
+            else:
+                logger.warning(f"[实时行情] {stock_code} BitgetFetcher 不可用")
+            
+            # BitgetFetcher 失败时尝试 BinanceFetcher
+            binance_fetcher = self._get_fetcher_by_name("BinanceFetcher")
+            if binance_fetcher is not None:
+                quote = binance_fetcher.get_realtime_quote(stock_code)
                 if quote is not None:
                     logger.info(f"[实时行情] {stock_code} 成功获取 (来源: BinanceFetcher)")
                     return self._enrich_realtime_quote(
