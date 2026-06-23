@@ -227,18 +227,18 @@ class BitgetFetcher(BaseFetcher):
         if df.empty:
             raise DataFetchError(f"BitgetFetcher 未获取到 {stock_code} 的数据")
         
-        # 重命名列为标准列名
-        df = df.rename(columns={
-            "日期": "date",
-            "开盘": "open",
-            "收盘": "close",
-            "最高": "high",
-            "最低": "low",
-            "成交量": "volume",
-            "成交额": "turnover",
-        })
+        df = self._normalize_data(df, stock_code)
         
         return df[STANDARD_COLUMNS]
+    
+    def _normalize_data(self, df: pd.DataFrame, stock_code: str) -> pd.DataFrame:
+        """标准化数据列名"""
+        if df.empty:
+            return df
+        
+        # BitGet 返回的数据已经是标准化格式: date, open, close, high, low, volume, turnover
+        # 直接返回
+        return df
     
     def get_realtime_quote(self, stock_code: str) -> Optional[UnifiedRealtimeQuote]:
         """
